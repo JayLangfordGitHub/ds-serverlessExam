@@ -32,3 +32,13 @@ The app resembles the REST web API you developed in the labs. Two new DynamoDB t
 Examine all aspects of the code related to these tables, e.g. seeding, types, etc. Also, examine the REST API stack code and the lambda functions. __Do not change the code.__
 
 When you have fully understood the app, you may destroy the stack. However, redeploy the app again the day before the exam and leave it deployed. 
+
+### What I Added
+
+All functionality complete
+
+![image](https://github.com/user-attachments/assets/defbb4c6-4769-417c-80cd-9a951accaa6e)
+
+![image](https://github.com/user-attachments/assets/ffc54038-2127-4dc1-966c-c5f017b80ded)
+
+
