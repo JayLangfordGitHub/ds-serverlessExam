@@ -1,47 +1,78 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  QueryCommand,
+  QueryCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 
 const ddbDocClient = createDocumentClient();
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
   try {
     console.log("Event: ", JSON.stringify(event));
+
     const parameters = event?.pathParameters;
+    const queryParams = event?.queryStringParameters;
 
-    const awardBody = parameters?.awardBody;
     const movieId = parameters?.movieId ? parseInt(parameters.movieId) : undefined;
+    const awardBody = parameters?.awardBody;
 
-    if (!awardBody || !movieId) {
+    if (!movieId || !awardBody) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ message: "Missing awardBody or movieId" }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "Missing movieId or awardBody in path" }),
       };
     }
 
-    const command = new GetCommand({
+    let minAwards = 0;
+    if (queryParams?.min) {
+      minAwards = parseInt(queryParams.min);
+      if (isNaN(minAwards)) {
+        return {
+          statusCode: 400,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message: "Invalid 'min' query parameter" }),
+        };
+      }
+    }
+
+    const commandInput: QueryCommandInput = {
       TableName: process.env.TABLE_NAME,
-      Key: { movieId: movieId, awardBody: awardBody },
-    });
+      KeyConditionExpression: "movieId = :movieId and awardBody = :awardBody",
+      ExpressionAttributeValues: {
+        ":movieId": movieId,
+        ":awardBody": awardBody,
+      },
+    };
 
-    const result = await ddbDocClient.send(command);
+    const commandOutput = await ddbDocClient.send(new QueryCommand(commandInput));
 
-    if (!result.Item) {
+    const awards = commandOutput.Items || [];
+
+    const totalAwards = awards.reduce((sum, award) => sum + (award.numAwards || 0), 0);
+
+    // Updated condition to make `min` inclusive
+    if (totalAwards < minAwards) {
       return {
-        statusCode: 404,
-        body: JSON.stringify({ message: "Details not found" }),
+        statusCode: 400,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "Request failed" }),
       };
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify(result.Item),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: awards }),
     };
-  } catch (error) {
-    console.error("Error getting award details:", error);
+  } catch (error: any) {
+    console.log("Error: ", JSON.stringify(error));
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Internal Server Error" }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error }),
     };
   }
 };
@@ -53,9 +84,7 @@ function createDocumentClient() {
     removeUndefinedValues: true,
     convertClassInstanceToMap: true,
   };
-  const unmarshallOptions = {
-    wrapNumbers: false,
-  };
+  const unmarshallOptions = { wrapNumbers: false };
   const translateConfig = { marshallOptions, unmarshallOptions };
   return DynamoDBDocumentClient.from(ddbClient, translateConfig);
 }
